@@ -17,7 +17,7 @@ exports.shortenURL = async (req, res) => {
     const shortId = nanoid(6);
     const shortUrl = `${BASE_URL}/${shortId}`;
 
-    await client.set(shortId, longUrl, { EX: 60 }); // expires in 1 min
+    await client.set(shortId, longUrl, { EX: 3600}); // Expires in 1 hour
 
     res.json({ shortUrl });
 };
