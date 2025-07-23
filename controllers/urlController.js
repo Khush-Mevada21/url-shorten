@@ -60,12 +60,47 @@ exports.shortenURL = async (req, res) => {
 
     const shortUrl = `${BASE_URL}/${shortId}`;
     res.json({ shortUrl });
+
+    const now = new Date().toISOString();
+
+    await client.hSet(`meta:${shortId}`, {
+        clicks: 0,
+        createdAt: now,
+        lastAccessed: now
+    });
+    await client.expire(`meta:${shortId}`, expireSeconds);
+
 };
 
 exports.redirectURL = async (req, res) => {
     const shortId = req.params.shortId;
     const longUrl = await client.get(shortId);
 
-    if (longUrl) return res.redirect(longUrl);
-    res.status(404).send('URL not found or expired');
+    if (longUrl) {
+        await client.hIncrBy(`meta:${shortId}`, 'clicks', 1);
+        await client.hSet(`meta:${shortId}`, 'lastAccessed', new Date().toISOString());
+        return res.redirect(longUrl);
+    }
+
+    return res.status(404).send('URL not found or expired');
+};
+
+exports.getStats = async (req, res) => {
+    const shortId = req.params.shortId;
+    const metaKey = `meta:${shortId}`;
+
+    const longUrl = await client.get(shortId);
+    if (!longUrl) {
+        return res.status(404).json({ error: 'Short URL not found or expired' });
+    }
+
+    const meta = await client.hGetAll(metaKey);
+
+    res.json({
+        shortId,
+        longUrl,
+        clicks: parseInt(meta.clicks || 0),
+        createdAt: meta.createdAt || null,
+        lastAccessed: meta.lastAccessed || null,
+    });
 };
