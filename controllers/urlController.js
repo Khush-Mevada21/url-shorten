@@ -76,13 +76,28 @@ exports.redirectURL = async (req, res) => {
     const shortId = req.params.shortId;
     const longUrl = await client.get(shortId);
 
-    if (longUrl) {
-        await client.hIncrBy(`meta:${shortId}`, 'clicks', 1);
-        await client.hSet(`meta:${shortId}`, 'lastAccessed', new Date().toISOString());
-        return res.redirect(longUrl);
+    if (!longUrl) {
+        return res.status(404).send('URL not found or expired');
     }
 
-    return res.status(404).send('URL not found or expired');
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+    const referrer = req.headers['referer'] || req.headers['referrer'] || 'direct';
+    const timestamp = new Date().toISOString();
+
+    await client.hIncrBy(`meta:${shortId}`, 'clicks', 1);
+    await client.hSet(`meta:${shortId}`, 'lastAccessed', timestamp);
+
+    await client.lPush(`logs:${shortId}`, JSON.stringify({
+        ip,
+        userAgent,
+        referrer,
+        timestamp
+    }));
+
+    await client.lTrim(`logs:${shortId}`, 0, 99);
+
+    return res.redirect(longUrl);
 };
 
 exports.getStats = async (req, res) => {
@@ -103,4 +118,12 @@ exports.getStats = async (req, res) => {
         createdAt: meta.createdAt || null,
         lastAccessed: meta.lastAccessed || null,
     });
+};
+
+exports.getLogs = async (req, res) => {
+    const shortId = req.params.shortId;
+    const logs = await client.lRange(`logs:${shortId}`, 0, 49); 
+
+    const parsedLogs = logs.map(log => JSON.parse(log));
+    res.json({ shortId, logs: parsedLogs });
 };
