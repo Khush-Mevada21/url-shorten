@@ -122,8 +122,26 @@ exports.getStats = async (req, res) => {
 
 exports.getLogs = async (req, res) => {
     const shortId = req.params.shortId;
-    const logs = await client.lRange(`logs:${shortId}`, 0, 49); 
 
-    const parsedLogs = logs.map(log => JSON.parse(log));
-    res.json({ shortId, logs: parsedLogs });
+    const longUrl = await client.get(shortId);
+    if (!longUrl) {
+        return res.status(404).json({ error: 'Short URL not found or expired' });
+    }
+
+    const logs = await client.lRange(`logs:${shortId}`, 0, 99); 
+
+    const parsedLogs = logs.map(log => {
+        try {
+            return JSON.parse(log);
+        } catch {
+            return null;
+        }
+    }).filter(Boolean); 
+
+    res.json({
+        shortId,
+        totalLogs: parsedLogs.length,
+        logs: parsedLogs
+    });
 };
+
